@@ -9,7 +9,7 @@ resource "random_string" "cc" {
   length           = 4
   special          = false
   lower            = true
-  override_special = "/@£$"
+  upper            = false
 }
 
 resource "azurerm_resource_group" "cc" {
@@ -72,6 +72,12 @@ resource "azurerm_virtual_machine" "cc" {
     azurerm_network_interface.cc.id,
   ]
 
+  plan {
+    name      = "cyclecloud8"
+    publisher = "azurecyclecloud"
+    product   = "azure-cyclecloud"
+  }
+
   storage_image_reference {
     publisher = "azurecyclecloud"
     offer     = "azure-cyclecloud"
@@ -97,7 +103,7 @@ resource "azurerm_virtual_machine" "cc" {
 
     ssh_keys {
       key_data = file("~/.ssh/id_rsa.pub")
-      path = "/home/cycleadmin/.ssh/authorized_keys"
+      path     = "/home/cycleadmin/.ssh/authorized_keys"
     }
   }
 }
