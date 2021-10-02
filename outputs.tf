@@ -1,3 +1,3 @@
-output "public_ip" {
-  value = azurerm_public_ip.cc.ip_address
+output "cyclecloud_url" {
+  value = "https://${azurerm_public_ip.cyclecloud.ip_address}"
 }

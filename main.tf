@@ -2,138 +2,157 @@ provider "azurerm" {
   features {}
 }
 
-data "azurerm_subscription" "cc" {
+data "azurerm_subscription" "cyclecloud" {
 }
 
-resource "random_string" "cc" {
-  length           = 4
-  special          = false
-  lower            = true
-  upper            = false
-}
-
-resource "azurerm_resource_group" "cc" {
-  name     = "rg-cc-${random_string.cc.result}"
-  location = "West US 2"
-}
-
-resource "azurerm_virtual_network" "cc" {
-  name                = "vn-cc-${random_string.cc.result}"
-  address_space       = ["10.0.0.0/16"]
-  location            = azurerm_resource_group.cc.location
-  resource_group_name = azurerm_resource_group.cc.name
-}
-
-resource "azurerm_subnet" "cc" {
-  name                 = "cyclecloud"
-  resource_group_name  = azurerm_resource_group.cc.name
-  virtual_network_name = azurerm_virtual_network.cc.name
-  address_prefixes     = ["10.0.2.0/24"]
-}
-
-resource "azurerm_subnet" "cc_cluster" {
-  name                 = "cluster"
-  resource_group_name  = azurerm_resource_group.cc.name
-  virtual_network_name = azurerm_virtual_network.cc.name
-  address_prefixes     = ["10.0.3.0/24"]
-}
-
-resource "azurerm_public_ip" "cc" {
-  name                = "vmcc${random_string.cc.result}-pip"
-  resource_group_name = azurerm_resource_group.cc.name
-  location            = azurerm_resource_group.cc.location
-  allocation_method   = "Static"
-}
-
-resource "azurerm_network_interface" "cc" {
-  name                = "vmcc${random_string.cc.result}-nic"
-  location            = azurerm_resource_group.cc.location
-  resource_group_name = azurerm_resource_group.cc.name
-
-  ip_configuration {
-    name                          = "internal"
-    subnet_id                     = azurerm_subnet.cc.id
-    private_ip_address_allocation = "Dynamic"
-    public_ip_address_id          = azurerm_public_ip.cc.id
+resource "null_resource" "cyclecloud" {
+  provisioner "local-exec" {
+    #command = "az vm image terms accept --urn azurecyclecloud:azure-cyclecloud:cyclecloud8:latest"
+    command = "az vm image terms accept --urn ${var.vm_image.publisher}:${var.vm_image.product_offer}:${var.vm_image.plan_sku}:${var.vm_image.version}"
   }
 }
 
-resource "azurerm_virtual_machine" "cc" {
-  name                = "vmcc${random_string.cc.result}"
-  location            = azurerm_resource_group.cc.location
-  resource_group_name = azurerm_resource_group.cc.name
-  vm_size             = "Standard_DS2_v2"
+resource "random_pet" "cyclecloud" {
+  length    = 2
+  separator = ""
+}
+
+resource "azurerm_resource_group" "cyclecloud" {
+  name     = "rg-${random_pet.cyclecloud.id}"
+  location = var.location
+  tags     = var.tags
+}
+
+resource "azurerm_virtual_network" "cyclecloud" {
+  name                = "vn-${random_pet.cyclecloud.id}"
+  address_space       = var.vnet_address_space
+  location            = azurerm_resource_group.cyclecloud.location
+  resource_group_name = azurerm_resource_group.cyclecloud.name
+  tags                = var.tags
+}
+
+resource "azurerm_subnet" "cyclecloud" {
+  name                 = "cyclecloud"
+  resource_group_name  = azurerm_resource_group.cyclecloud.name
+  virtual_network_name = azurerm_virtual_network.cyclecloud.name
+  address_prefixes     = var.snet_address_space_cyclecloud
+}
+
+resource "azurerm_subnet" "cyclecloud_cluster" {
+  name                 = "cluster"
+  resource_group_name  = azurerm_resource_group.cyclecloud.name
+  virtual_network_name = azurerm_virtual_network.cyclecloud.name
+  address_prefixes     = var.snet_address_space_cluster
+}
+
+resource "azurerm_public_ip" "cyclecloud" {
+  name                = "vm${random_pet.cyclecloud.id}-pip"
+  resource_group_name = azurerm_resource_group.cyclecloud.name
+  location            = azurerm_resource_group.cyclecloud.location
+  allocation_method   = "Static"
+  tags                = var.tags
+}
+
+resource "azurerm_network_interface" "cyclecloud" {
+  name                = "vm${random_pet.cyclecloud.id}-nic"
+  location            = azurerm_resource_group.cyclecloud.location
+  resource_group_name = azurerm_resource_group.cyclecloud.name
+
+  ip_configuration {
+    name                          = "ipconfig1"
+    subnet_id                     = azurerm_subnet.cyclecloud.id
+    private_ip_address_allocation = "Dynamic"
+    public_ip_address_id          = azurerm_public_ip.cyclecloud.id
+  }
+
+  tags = var.tags
+}
+
+resource "azurerm_virtual_machine" "cyclecloud" {
+  name                = "vm${random_pet.cyclecloud.id}"
+  location            = azurerm_resource_group.cyclecloud.location
+  resource_group_name = azurerm_resource_group.cyclecloud.name
+  vm_size             = var.vm_size
 
   identity {
     type = "SystemAssigned"
   }
 
   network_interface_ids = [
-    azurerm_network_interface.cc.id,
+    azurerm_network_interface.cyclecloud.id,
   ]
 
   plan {
-    name      = "cyclecloud8"
-    publisher = "azurecyclecloud"
-    product   = "azure-cyclecloud"
+    name      = var.vm_image.plan_sku
+    publisher = var.vm_image.publisher
+    product   = var.vm_image.product_offer
   }
 
   storage_image_reference {
-    publisher = "azurecyclecloud"
-    offer     = "azure-cyclecloud"
-    sku       = "cyclecloud8"
-    version   = "latest"
+    publisher = var.vm_image.publisher
+    offer     = var.vm_image.product_offer
+    sku       = var.vm_image.plan_sku
+    version   = var.vm_image.version
   }
 
   storage_os_disk {
-    name              = "vmcc${random_string.cc.result}-OsDisk"
+    name              = "vm${random_pet.cyclecloud.id}-OsDisk"
     caching           = "ReadWrite"
     create_option     = "FromImage"
-    managed_disk_type = "Standard_LRS"
+    managed_disk_type = var.vm_managed_disk_type
   }
 
   os_profile {
-    computer_name  = "vmcc${random_string.cc.result}"
-    admin_username = "cycleadmin"
+    computer_name  = "vm${random_pet.cyclecloud.id}"
+    admin_username = var.vm_admin_username
   }
 
   os_profile_linux_config {
     disable_password_authentication = true
 
-
     ssh_keys {
       key_data = file("~/.ssh/id_rsa.pub")
-      path     = "/home/cycleadmin/.ssh/authorized_keys"
+      path     = "/home/${var.vm_admin_username}/.ssh/authorized_keys"
     }
   }
+
+  tags = var.tags
+
+  depends_on = [
+    null_resource.cyclecloud
+  ]
 }
 
-resource "azurerm_managed_disk" "cc" {
-  name                 = "vmcc${random_string.cc.result}-disk1"
-  location             = azurerm_resource_group.cc.location
-  resource_group_name  = azurerm_resource_group.cc.name
-  storage_account_type = "Standard_LRS"
+resource "azurerm_managed_disk" "cyclecloud" {
+  name                 = "vm${random_pet.cyclecloud.id}-DataDisk1"
+  location             = azurerm_resource_group.cyclecloud.location
+  resource_group_name  = azurerm_resource_group.cyclecloud.name
+  storage_account_type = var.vm_managed_disk_type
   create_option        = "Empty"
-  disk_size_gb         = 128
+  disk_size_gb         = var.vm_data_disk_size_gb
+
+  tags = var.tags
 }
 
-resource "azurerm_virtual_machine_data_disk_attachment" "cc" {
-  managed_disk_id    = azurerm_managed_disk.cc.id
-  virtual_machine_id = azurerm_virtual_machine.cc.id
-  lun                = "0"
+resource "azurerm_virtual_machine_data_disk_attachment" "cyclecloud" {
+  managed_disk_id    = azurerm_managed_disk.cyclecloud.id
+  virtual_machine_id = azurerm_virtual_machine.cyclecloud.id
+  lun                = "1"
   caching            = "ReadOnly"
 }
 
-resource "azurerm_storage_account" "cc" {
-  name                     = "sacc${random_string.cc.result}"
-  resource_group_name      = azurerm_resource_group.cc.name
-  location                 = azurerm_resource_group.cc.location
+resource "azurerm_storage_account" "cyclecloud" {
+  name                     = "sa${random_pet.cyclecloud.id}"
+  resource_group_name      = azurerm_resource_group.cyclecloud.name
+  location                 = azurerm_resource_group.cyclecloud.location
   account_tier             = "Standard"
   account_replication_type = "LRS"
+
+  tags = var.tags
 }
 
-resource "azurerm_role_assignment" "cc" {
-  scope                = data.azurerm_subscription.cc.id
+resource "azurerm_role_assignment" "cyclecloud" {
+  scope                = data.azurerm_subscription.cyclecloud.id
   role_definition_name = "Contributor"
-  principal_id         = azurerm_virtual_machine.cc.identity[0].principal_id
+  principal_id         = azurerm_virtual_machine.cyclecloud.identity[0].principal_id
 }
